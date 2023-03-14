@@ -1,10 +1,17 @@
+# 2D U-Net model for semantic segmentation of prostate cancer in MRI images.
+# Sources: 
+    # - https://pyimagesearch.com/2021/11/08/u-net-training-image-segmentation-models-in-pytorch/
+    # - https://medium.com/analytics-vidhya/unet-implementation-in-pytorch-idiot-developer-da40d955f201
+
+
 import torch
 import torch.nn as nn
 
-""" Convolutional block:
-    It follows a two 3x3 convolutional layer, each followed by a batch normalization and a relu activation.
-"""
-class conv_block(nn.Module):
+
+class ConvBlock(nn.Module):
+    """
+    A simple convolutional block consisting of two convolutional layers, followed by batch normalization and ReLU activation.
+    """
     def __init__(self, in_c, out_c, k=3, s=1, p=1):
         super().__init__()
 
@@ -27,15 +34,16 @@ class conv_block(nn.Module):
 
         return x
 
-""" Encoder block:
-    It consists of an conv_block followed by a max pooling.
-    Here the number of filters doubles and the height and width half after every block.
-"""
-class encoder_block(nn.Module):
+
+class UNet_Encoder(nn.Module):
+    """
+    An encoder block, consisting of a convolutional block followed by a max pooling layer.
+    The number of filters gets doubled after every block, whereas te dimensions get halved.
+    """
     def __init__(self, in_c, out_c):
         super().__init__()
 
-        self.conv = conv_block(in_c, out_c)
+        self.conv = ConvBlock(in_c, out_c)
         self.pool = nn.MaxPool2d((2, 2))
 
     def forward(self, inputs):
@@ -44,21 +52,21 @@ class encoder_block(nn.Module):
 
         return x, p
 
-""" Decoder block:
-    The decoder block begins with a transpose convolution, followed by a concatenation with the skip
-    connection from the encoder block. Next comes the conv_block.
-    Here the number filters decreases by half and the height and width doubles.
-"""
-class decoder_block(nn.Module):
+
+class UNet_Decoder(nn.Module):
+    """
+    A U-Net decoder block, consisting of a transpose convolution for upsampling, and a skip connection from the encoder.
+    The upsampled input is concatenated with the encoder output, and then passed through a convolutional block.
+    Conversely to the encoder block, the number of filters gets halved after every block, whereas the dimensions are doubled.
+    """
     def __init__(self, in_c, out_c, k=2, s=2, p=0):
         super().__init__()
 
-        self.up = nn.ConvTranspose2d(in_c, out_c, kernel_size=s, stride=s, padding=p)
-        self.conv = conv_block(out_c+out_c, out_c)
+        self.up = nn.ConvTransposenc_out_2d(in_c, out_c, kernel_size=s, stride=s, padding=p)
+        self.conv = ConvBlock(out_c+out_c, out_c)
 
     def forward(self, inputs, skip):
         x = self.up(inputs)
-        #skip = nn.functional.pad(skip, (0, x.shape[3] - skip.shape[3], 0, x.shape[2] - skip.shape[2]))
         x = torch.cat([x, skip], axis=1)
         x = self.conv(x)
 
@@ -69,56 +77,37 @@ class UNet2D(nn.Module):
     def __init__(self, device='cpu'):
         super().__init__()
 
-        """ Encoder """
-        self.e1 = encoder_block(1, 64).to(device)
-        self.e2 = encoder_block(64, 128).to(device)
-        self.e3 = encoder_block(128, 256).to(device)
-        self.e4 = encoder_block(256, 512).to(device)
+        # Encoder layers
+        self.enc_out_1 = UNet_Encoder(1, 64).to(device)
+        self.enc_out_2 = UNet_Encoder(64, 128).to(device)
+        self.enc_out_3 = UNet_Encoder(128, 256).to(device)
+        self.enc_out_4 = UNet_Encoder(256, 512).to(device)
 
-        """ Bottleneck """
-        self.b = conv_block(512, 1024).to(device)
+        self.bottleneck = ConvBlock(512, 1024).to(device) # bottleneck layer
 
-        """ Decoder """
-        self.d1 = decoder_block(1024, 512).to(device)
-        self.d2 = decoder_block(512, 256).to(device)
-        self.d3 = decoder_block(256, 128).to(device)
-        self.d4 = decoder_block(128, 64).to(device)
+        # Decoder layers
+        self.dec_out_1 = UNet_Decoder(1024, 512).to(device)
+        self.dec_out_2 = UNet_Decoder(512, 256).to(device)
+        self.dec_out_3 = UNet_Decoder(256, 128).to(device)
+        self.dec_out_4 = UNet_Decoder(128, 64).to(device)
 
-        """ Classifier """
-        self.outputs = nn.Conv2d(64, 1, kernel_size=1, padding=0).to(device)
+        self.out_layer = nn.Conv2d(64, 1, kernel_size=1, padding=0).to(device) # output layer
 
     def forward(self, inputs):
-        """ Encoder """
-        s1, p1 = self.e1(inputs)
-        s2, p2 = self.e2(p1)
-        s3, p3 = self.e3(p2)
-        s4, p4 = self.e4(p3)
+        # Encoder forward pass
+        skip_1, embs_1 = self.enc_out_1(inputs)
+        skip_2, embs_2 = self.enc_out_2(embs_1)
+        skip_3, embs_3 = self.enc_out_3(embs_2)
+        skip_4, embs_4 = self.enc_out_4(embs_3)
+        
+        b = self.bottleneck(embs_4) # bottleneck layer
 
-        """ Bottleneck """
-        b = self.b(p4)
+        # Decoder forward pass
+        dec_out_1 = self.dec_out_1(b, skip_4)
+        dec_out_2 = self.dec_out_2(dec_out_1, skip_3)
+        dec_out_3 = self.dec_out_3(dec_out_2, skip_2)
+        dec_out_4 = self.d4(dec_out_3, skip_1)
 
-        """ Decoder """
-        d1 = self.d1(b, s4)
-        d2 = self.d2(d1, s3)
-        d3 = self.d3(d2, s2)
-        d4 = self.d4(d3, s1)
+        seg_mask = self.outputs(dec_out_4) # segmentation mask output
 
-        """ Classifier """
-        outputs = self.outputs(d4)
-
-        return outputs
-
-if __name__ == "__main__":
-    # inputs = torch.randn((2, 32, 256, 256))
-    # e = encoder_block(32, 64)
-    # x, p = e(inputs)
-    # print(x.shape, p.shape)
-    #
-    # d = decoder_block(64, 32)
-    # y = d(p, x)
-    # print(y.shape)
-
-    inputs = torch.randn((10, 1, 304, 304))
-    model = UNet2D()
-    y = model(inputs)
-    print(y.shape)
+        return seg_mask

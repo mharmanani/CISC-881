@@ -224,6 +224,18 @@ for fold in range(-1):
 
 
 def crop_and_slice_volumes(dir, desig, subsets):
+    """
+    Crop and slice all volumes in a given directory.
+
+    :dir:
+        The directory containing the volumes to be cropped and sliced.
+
+    :desig:
+        The designation of the volumes to be cropped and sliced, e.g. ADC, HBV, T2W, etc.
+
+    :subsets:
+        The subset of patient IDs in the data to be cropped and sliced.
+    """
     if desig in ["adc", "hbv", "t2w"]:
         volumes = crop_volumes(dir, desig, subsets)
     else:
@@ -234,8 +246,23 @@ def crop_and_slice_volumes(dir, desig, subsets):
         slices += slice_along_z(V)
     return slices
 
-def create_ids(subsets):
-    train_folds, validation_folds, test_folds = subsets
+def z_score_normalize_slices(slices):
+    """
+    Normalize the slices using z-score normalization.
+    """
+    for i in tqdm.tqdm(range(len(slices)), desc="Normalizing slices..."):
+        slices[i] = (slices[i] - slices[i].mean()) / slices[i].std()
+    return slices
+
+def create_ids(folds):
+    """
+    Given a list of folds, create a list of patient IDs belonging to each 
+    of the training, validation, and test sets.
+
+    :folds:
+        A list of folds, e.g. [[0, 1, 2], [3], [4]]
+    """
+    train_folds, validation_folds, test_folds = folds
 
     train_ids = []
     for fold in train_folds:
