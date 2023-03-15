@@ -5,8 +5,6 @@ def SegmentationDataset(Dataset):
     def __init__(self, dataset, transform=None):
         self.dataset = dataset
 
-        print(self.dataset)
-
     def __len__(self):
         return len(self.dataset)
 

@@ -95,7 +95,7 @@ def re_slice_annotations(annote_type, reference_spacing, case_ids):
         _dir="../DATA/picai_labels/anatomical_delineations/whole_gland/AI/Bosma22b/"
         resample_dir="../DATA/resampled/annotations/whole_gland/"
     elif annote_type=='lesions':
-        _dir="../DATA/picai_labels/csPCa_lesion_delineations/human_expert/original/"
+        _dir="../DATA/picai_labels/csPCa_lesion_delineations/human_expert/"
         resample_dir="../DATA/resampled/annotations/lesions/"
     
     # Resampling logic starts here
@@ -161,8 +161,8 @@ def crop_annotations(dir, subset, k=40):
     """
     crop_size = (300, 300, 16)
     Vs = None
-    list_of_files = os.listdir(dir)
-    for fname in tqdm.tqdm(list_of_files[:k], desc="Cropping annotations"):
+    list_of_files = os.listdir(dir)[:k]
+    for fname in tqdm.tqdm(list_of_files, desc="Cropping annotations"):
         id = fname.split("_")[0]
         if '.npy' in fname and id in subset:
             V = np.load(dir+fname)
@@ -223,7 +223,7 @@ for fold in range(-1):
     re_slice_annotations("lesions", (0.5, 0.5, 3.0), os.listdir("../DATA/picai_public_images_fold"+str(fold)+"/"))
 
 
-def crop_and_slice_volumes(dir, desig, subsets):
+def crop_and_slice_volumes(dir, desig, subsets, k=100):
     """
     Crop and slice all volumes in a given directory.
 
@@ -237,9 +237,9 @@ def crop_and_slice_volumes(dir, desig, subsets):
         The subset of patient IDs in the data to be cropped and sliced.
     """
     if desig in ["adc", "hbv", "t2w"]:
-        volumes = crop_volumes(dir, desig, subsets)
+        volumes = crop_volumes(dir, desig, subsets, k=k)
     else:
-        volumes = crop_annotations(dir, subsets)
+        volumes = crop_annotations(dir, subsets, k=k)
     
     slices = []
     for V in volumes:
@@ -284,23 +284,30 @@ def augment_slices(slices):
         flipped_tensor = slices
     return augmentations
 
-def stratify(desig_samples, desig_label, subsets):
-    train_ids, validation_ids, test_ids = create_ids(subsets)
+def stratify(desig_samples, desig_label, subsets, no_folds=False):
+    if no_folds:
+        all_ids = [fname.split("_")[0] for fname in os.listdir("../DATA/resampled/cases"/) if desig_samples in fname]
+        
+        train_idx = round(0.9 * len(all_ids))
+        train_ids = all_ids[:train_idx]
 
-    train_slices = crop_and_slice_volumes("../DATA/resampled/cases/", desig_samples, train_ids)
-    train_annotations = crop_and_slice_volumes("../DATA/resampled/annotations/{0}".format(desig_label), desig_label, train_ids)
+        val_idx = 0.5 * len(all_ids[train_idx:])
+        validation_ids = all_ids[train_idx:][:val_idx]
+        test_ids = all_ids[train_idx:][val_idx:]
+    else:
+        train_ids, validation_ids, test_ids = create_ids(subsets)
+
+    train_slices = crop_and_slice_volumes("../DATA/resampled/cases/", desig_samples, train_ids, k=400)
+    train_annotations = crop_and_slice_volumes("../DATA/resampled/annotations/{0}".format(desig_label), desig_label, train_ids, k=400)
 
     train_data = []
     for i in range(len(train_slices)):
         train_data.append((train_slices[i], train_annotations[i]))
 
     del train_slices, train_annotations
-    
-    #train_slices += augment_slices(train_slices)
-    #train_slices = torch.Tensor(np.array(train_slices, dtype=np.float32))
 
-    validation_slices = crop_and_slice_volumes("../DATA/resampled/cases/", desig_samples, validation_ids)
-    validation_annotations = crop_and_slice_volumes("../DATA/resampled/annotations/{0}".format(desig_label), desig_label, validation_ids)
+    validation_slices = crop_and_slice_volumes("../DATA/resampled/cases/", desig_samples, validation_ids, k=50)
+    validation_annotations = crop_and_slice_volumes("../DATA/resampled/annotations/{0}".format(desig_label), desig_label, validation_ids, k=50)
 
     validation_data = []
     for i in range(len(validation_slices)):
@@ -308,11 +315,11 @@ def stratify(desig_samples, desig_label, subsets):
 
     del validation_slices, validation_annotations
 
-    test_slices = crop_and_slice_volumes("../DATA/resampled/cases/", desig_samples, test_ids)
-    test_annotations = crop_and_slice_volumes("../DATA/resampled/annotations/{0}".format(desig_label), desig_label, test_ids)
+    test_slices = crop_and_slice_volumes("../DATA/resampled/cases/", desig_samples, test_ids, k=50)
+    test_annotations = crop_and_slice_volumes("../DATA/resampled/annotations/{0}".format(desig_label), desig_label, test_ids, k=50)
 
     test_data = []
-    for i in range(len(test_slices)):
+    for i in range(min(len(test_slices), len(test_annotations))):
         test_data.append((test_slices[i], test_annotations[i]))
 
     del test_slices, test_annotations
