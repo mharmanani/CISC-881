@@ -286,7 +286,7 @@ def augment_slices(slices):
 
 def stratify(desig_samples, desig_label, subsets, no_folds=False):
     if no_folds:
-        all_ids = [fname.split("_")[0] for fname in os.listdir("../DATA/resampled/cases"/) if desig_samples in fname]
+        all_ids = [fname.split("_")[0] for fname in os.listdir("../DATA/resampled/cases/") if desig_samples in fname]
         
         train_idx = round(0.9 * len(all_ids))
         train_ids = all_ids[:train_idx]
