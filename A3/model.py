@@ -62,7 +62,7 @@ class UNet_Decoder(nn.Module):
     def __init__(self, in_c, out_c, k=2, s=2, p=0):
         super().__init__()
 
-        self.up = nn.ConvTransposenc_out_2d(in_c, out_c, kernel_size=s, stride=s, padding=p)
+        self.up = nn.ConvTranspose2d(in_c, out_c, kernel_size=s, stride=s, padding=p)
         self.conv = ConvBlock(out_c+out_c, out_c)
 
     def forward(self, inputs, skip):
@@ -93,6 +93,10 @@ class UNet2D(nn.Module):
 
         self.out_layer = nn.Conv2d(64, 1, kernel_size=1, padding=0).to(device) # output layer
 
+        self.relu = nn.ReLU()
+        self.softmax = nn.Softmax(dim=0)
+        self.sigmoid = nn.Sigmoid()
+
     def forward(self, inputs):
         # Encoder forward pass
         skip_1, embs_1 = self.enc_out_1(inputs)
@@ -106,8 +110,8 @@ class UNet2D(nn.Module):
         dec_out_1 = self.dec_out_1(b, skip_4)
         dec_out_2 = self.dec_out_2(dec_out_1, skip_3)
         dec_out_3 = self.dec_out_3(dec_out_2, skip_2)
-        dec_out_4 = self.d4(dec_out_3, skip_1)
+        dec_out_4 = self.dec_out_4(dec_out_3, skip_1)
 
-        seg_mask = self.outputs(dec_out_4) # segmentation mask output
+        seg_mask = self.sigmoid(self.out_layer(dec_out_4)) # segmentation mask output
 
         return seg_mask
