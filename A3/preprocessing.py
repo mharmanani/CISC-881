@@ -284,6 +284,7 @@ def augment_slices(slices):
     augmentations = []
     for i in tqdm.tqdm(range(len(slices)), desc="Augmenting slices..."):
         flipped_tensor = slices
+        augmentations.append(flipped_tensor)
     return augmentations
 
 def stratify(desig_samples, desig_label, subsets, no_folds=True):
