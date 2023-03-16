@@ -1,7 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
-import seaborn as sns
 
 import tqdm
 
@@ -129,7 +128,7 @@ def crop_volume(V, crop_size):
     a, b, c = crop_size
     return V[:, (x-a)//2:(x+a)//2, (y-b)//2:(y+b)//2, (z-c)//2:(z+c)//2]
 
-def crop_volumes(dir, desig, subset, k=40):
+def crop_volumes(dir, desig, subset):
     """
     Crop all volumes in a given directory to a given size.
     
@@ -139,7 +138,7 @@ def crop_volumes(dir, desig, subset, k=40):
     crop_size = (300, 300, 16)
     Vs = None
     list_of_files = [filename for filename in os.listdir(dir) if desig in filename]
-    for fname in tqdm.tqdm(list_of_files[:k], desc="Cropping {0} volumes".format(desig)):
+    for fname in tqdm.tqdm(list_of_files, desc="Cropping {0} volumes".format(desig)):
         id = fname.split("_")[0]
         if '.npy' in fname and id in subset:
             V = np.load(dir+fname)
@@ -152,7 +151,7 @@ def crop_volumes(dir, desig, subset, k=40):
                 Vs = np.append(Vs, V, axis=0)
     return Vs
 
-def crop_annotations(dir, subset, k=40):
+def crop_annotations(dir, subset):
     """
     Crop all annotations in a given directory to a given size.
     
@@ -161,7 +160,7 @@ def crop_annotations(dir, subset, k=40):
     """
     crop_size = (300, 300, 16)
     Vs = None
-    list_of_files = os.listdir(dir)[:k]
+    list_of_files = os.listdir(dir)
     for fname in tqdm.tqdm(list_of_files, desc="Cropping annotations"):
         id = fname.split("_")[0]
         if '.npy' in fname and id in subset:
@@ -211,7 +210,7 @@ def flip_img_horizontal(img):
     return np.flip(img, axis=1)
 
 # Load the data
-marksheet = pd.read_csv("../DATA/picai_labels/clinical_information/marksheet.csv")
+#marksheet = pd.read_csv("../DATA/picai_labels/clinical_information/marksheet.csv")
 
 for fold in range(-1):
     re_slice_cases("../DATA/picai_public_images_fold"+str(fold)+"/", "adc", (0.5, 0.5, 3.0))
@@ -223,7 +222,7 @@ for fold in range(-1):
     re_slice_annotations("lesions", (0.5, 0.5, 3.0), os.listdir("../DATA/picai_public_images_fold"+str(fold)+"/"))
 
 
-def crop_and_slice_volumes(dir, desig, subsets, k=100):
+def crop_and_slice_volumes(dir, desig, subsets):
     """
     Crop and slice all volumes in a given directory.
 
@@ -237,10 +236,10 @@ def crop_and_slice_volumes(dir, desig, subsets, k=100):
         The subset of patient IDs in the data to be cropped and sliced.
     """
     if desig in ["adc", "hbv", "t2w"]:
-        volumes = crop_volumes(dir, desig, subsets, k=k)
+        volumes = crop_volumes(dir, desig, subsets)
     else:
-        volumes = crop_annotations(dir, subsets, k=k)
-    
+        volumes = crop_annotations(dir, subsets)
+
     slices = []
     for V in volumes:
         slices += slice_along_z(V)
@@ -279,26 +278,29 @@ def create_ids(folds):
     return train_ids, validation_ids, test_ids
 
 def augment_slices(slices):
+    """
+    Apply data augmentation by flipping the slices
+    """
     augmentations = []
     for i in tqdm.tqdm(range(len(slices)), desc="Augmenting slices..."):
         flipped_tensor = slices
     return augmentations
 
-def stratify(desig_samples, desig_label, subsets, no_folds=False):
+def stratify(desig_samples, desig_label, subsets, no_folds=True):
     if no_folds:
-        all_ids = [fname.split("_")[0] for fname in os.listdir("../DATA/resampled/cases/") if desig_samples in fname]
+        all_ids = [fname.split("_")[0] for fname in os.listdir("../DATA/resampled/annotations/lesions/")]
         
-        train_idx = round(0.9 * len(all_ids))
+        train_idx = round(0.7 * len(all_ids))
         train_ids = all_ids[:train_idx]
 
-        val_idx = 0.5 * len(all_ids[train_idx:])
+        val_idx = round(0.5 * len(all_ids[train_idx:]))
         validation_ids = all_ids[train_idx:][:val_idx]
         test_ids = all_ids[train_idx:][val_idx:]
     else:
         train_ids, validation_ids, test_ids = create_ids(subsets)
 
-    train_slices = crop_and_slice_volumes("../DATA/resampled/cases/", desig_samples, train_ids, k=400)
-    train_annotations = crop_and_slice_volumes("../DATA/resampled/annotations/{0}".format(desig_label), desig_label, train_ids, k=400)
+    train_slices = crop_and_slice_volumes("../DATA/resampled/cases/", desig_samples, train_ids)
+    train_annotations = crop_and_slice_volumes("../DATA/resampled/annotations/{0}".format(desig_label), desig_label, train_ids)
 
     train_data = []
     for i in range(len(train_slices)):
@@ -306,8 +308,8 @@ def stratify(desig_samples, desig_label, subsets, no_folds=False):
 
     del train_slices, train_annotations
 
-    validation_slices = crop_and_slice_volumes("../DATA/resampled/cases/", desig_samples, validation_ids, k=50)
-    validation_annotations = crop_and_slice_volumes("../DATA/resampled/annotations/{0}".format(desig_label), desig_label, validation_ids, k=50)
+    validation_slices = crop_and_slice_volumes("../DATA/resampled/cases/", desig_samples, validation_ids)
+    validation_annotations = crop_and_slice_volumes("../DATA/resampled/annotations/{0}".format(desig_label), desig_label, validation_ids)
 
     validation_data = []
     for i in range(len(validation_slices)):
@@ -315,8 +317,8 @@ def stratify(desig_samples, desig_label, subsets, no_folds=False):
 
     del validation_slices, validation_annotations
 
-    test_slices = crop_and_slice_volumes("../DATA/resampled/cases/", desig_samples, test_ids, k=50)
-    test_annotations = crop_and_slice_volumes("../DATA/resampled/annotations/{0}".format(desig_label), desig_label, test_ids, k=50)
+    test_slices = crop_and_slice_volumes("../DATA/resampled/cases/", desig_samples, test_ids)
+    test_annotations = crop_and_slice_volumes("../DATA/resampled/annotations/{0}".format(desig_label), desig_label, test_ids)
 
     test_data = []
     for i in range(min(len(test_slices), len(test_annotations))):
