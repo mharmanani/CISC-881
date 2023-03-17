@@ -242,7 +242,8 @@ def crop_and_slice_volumes(dir, desig, subsets):
 
     slices = []
     for V in volumes:
-        slices += slice_along_z(V)
+        slices += z_score_normalize_slices(slice_along_z(V))
+
     return slices
 
 def z_score_normalize_slices(slices):
